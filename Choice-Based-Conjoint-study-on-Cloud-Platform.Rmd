@@ -1,0 +1,273 @@
+---
+title: "Marketing Analytics Report"
+subtitle: Choice Based Conjoint study of Cloud Services
+
+---
+```{r setup, include = FALSE}
+knitr::opts_chunk$set(echo = T, comment = NA, message = F, warning = F, fig.align = "center")
+options(pillar.sigfig = 7)
+options(scipen = 999)
+```
+
+knitr::purl(input = "Choice Based Conjoint study on Cloud Platform.Rmd", output = "C.R", documentation = 0)
+
+
+<font size="1"> Load the libraries</font>
+
+```{r}
+library(tidyverse) 
+library(ggpubr) 
+library(dfidx) 
+library(mlogit)
+library(broom) 
+```
+
+
+# Question-1) Read and inspect the data set. Provide a descriptive analysis for each of the variables in the data set. Make sure you provide an analysis that is meaningful for each variable type (e.g., factors, identifiers).
+
+```{r}
+cloud <- read.csv("cloud.csv",stringsAsFactors=T)
+summary(cloud)
+glimpse(cloud)
+```
+<font size="2"> Load the data set and do descriptive statistics</font>
+
+
+```{r}
+table(cloud$cloud_storage)
+table(cloud$cloud_services)
+table(cloud$price)
+```
+<font size="2"> Inspecting attributes</font>
+
+
+# Question-2) Convert the attribute variables cloud_storage and price so that the factor reference levels are the levels representing the smallest values (i.e., 30GB for cloud_storage and p6 for price). Why there is no need to perform this step on the rest of the attribute variables?
+
+```{r}
+cloud$cloud_storage <- relevel(cloud$cloud_storage, ref = '30gb')
+cloud$price <- relevel(cloud$price, ref = 'p6')
+```
+<font size="2">Level of order arrangement of price and cloud storage</font>
+
+## Question-3) Create a new variable in the data set that turns price into numeric class (do not overwrite price). Call this new variable price_n. What is the mean of variable price_n?
+
+```{r}
+cloud['price_n']<- cloud$price
+cloud<- cloud %>% 
+  mutate(price_n = gsub("p", "", price_n), 
+         price_n = as.numeric(price_n)) 
+
+```
+<font size="2">Removing the character 'p' from price</font>
+
+
+```{r}
+mean(cloud$price_n)
+```
+<font size="2">Mean of price_n is 12.015</font>
+
+# Quetsion-4) There are 3000 choice sets in the data set. Therefore, there were 3000 choices made. Out of these 3000 choices, how many times did respondents choose a 30GB cloud storage? What is the percentage of respondents who chose email only as cloud service?
+
+```{r}
+A1 <- cloud %>% group_by(cloud_storage, choice) %>% summarise(n = n()) %>% ungroup() %>% arrange(desc(n))
+print(A1)
+```
+<font size="2">830 times respondents choose 30GB cloud storage </font>
+
+
+```{r}
+A2<- cloud %>% group_by(cloud_services, choice) %>% summarise(n = n()) %>% ungroup() %>% arrange(desc(n))
+print(A2)
+```
+<font size="2">Percentage of respondents who chose only email cloud service - 624/3000 = 20.8%</font>
+
+
+```{r}
+A3 <- cloud %>% group_by(cloud_storage, cloud_services, choice) %>% summarise(n = n()) %>% ungroup() %>% arrange(desc(n))
+print(A3)
+```
+<font size="2">Percentage of respondents who chose 30gb and only email cloud service - 163/3000 = 5.43%</font>
+
+# Question-5) Use the dfidx() function from the dfidx package to create a specially formatted data object that will be used in the process of estimating a multinomial conjoint model. In the argument idx, use a list of the two indexes (choice_id and respondent_id) that define unique observations. Also use alternative_id as the variable defining the levels of the alternatives. Call this data object m_data. How many variables (i.e., columns) does m_data have?
+
+```{r}
+m_data <- dfidx(cloud, 
+                choice = "choice", 
+                idx = list(c("choice_id", "respondent_id"), 
+                           "alternative_id"))  
+m_data 
+```
+
+<font size="2">Preparation of data for mlogit (Mulinomial Modelling)</font>
+
+# Question-6) Use m_data to build a multinomial logit model that predicts choice from cloud_storage, customer_support, cloud_services, and price. Make sure that you tell the mlogit() function to exclude the intercept term. Call this model model1. Use set.seed(123) right before running the command that builds the model. Comment on the coefficient estimates of cloud_storage5000gb and pricep12.
+
+```{r}
+
+set.seed(123) 
+
+
+m1 <- mlogit(choice ~ 0 + cloud_storage + customer_support + cloud_services + price, data = m_data)
+#Model-1 = m1
+
+summary(m1)
+```
+<font size="2">Therefore, as we can see 'pricep12' has an co-efficient of -0.83679 and 'cloud_storage5000gb' has an co-efficient of 0.8948827</font>
+ 
+# Question-7) Now follow the same process as in Task 6 to build a multinomial logit model that uses price_n instead of price. Call this model model2. Again use set.seed(123) right before running the command that builds the model. Comment on the coefficient estimate of price_n. What does this mean?
+
+```{r}
+set.seed(123) 
+
+m2 <- mlogit(choice ~ 0 + cloud_storage + customer_support + cloud_services + price_n, data = m_data)
+#Model-2 = m2
+summary(m2)
+```
+ <font size="2">'price_n' co-efficient is -0.1339355</font>
+ 
+## Question-8) Use a likelihood ratio test to test the model2 against model1. What is the outcome of the test? Are model2 and model1 significantly different? Which model we should choose between the two and for what reason(s)?
+ 
+```{r}
+lrtest(m1,m2)
+```
+<font size ="2"> No significant difference observed in likelihood ratio</font>
+
+## Question-9) Use model2 to predict the choice probabilities for different alternatives in the data. What is the predicted probability of choosing the third alternative in the first choice set?
+
+```{r}
+head(predict(m2, m_data), 1)
+```
+<font size="2"> 3rd alternative in first set is 0.02837</font>
+
+```{r}
+pred_prob <- predict(m2, m_data) %>% 
+  as_tibble()
+
+pred_prob
+```
+
+<font size="2"> Probability predictions based on model-2</font>
+
+# Question-10) Use the predicted probabilities from Task 9 to compute the predicted alternatives using the maximum choice probabilities. Which is the predicted alternative in the third choice set?
+
+```{r}
+pred_alternate <-
+  pred_prob %>% 
+  rowid_to_column("choiseset_id") %>% 
+  pivot_longer(!choiseset_id, names_to = "choice", values_to = "prob") %>% 
+  group_by(choiseset_id) %>% 
+  slice(which.max(prob)) %>% 
+  ungroup() %>% 
+  select(choice) %>% 
+  as_vector()
+
+pred_alternate
+```
+
+<font size="2">The maximum predicted alternative in choice set 3 is 2nd alternative.</font>
+
+# Question-11) Then we can extract the selected alternatives from the original data. Which is the selected alternative in the fifteenth choice set?
+
+```{r}
+sel_alternate <- 
+  cloud %>% 
+  filter(choice > 0) %>% 
+  select(alternative_id) %>% 
+  as_vector()
+
+
+sel_alternate
+```
+
+<font size="2">In the 15th choice set 2nd alternative is the selected alternative.</font>
+
+## Question-12) Compute the confusion matrix for model2. What is the accuracy (or hit rate) of model2? How does model2 compare to the baseline method (i.e., making random predictions)?
+
+```{r}
+table(sel_alternate, pred_alternate)
+```
+```{r}
+(579+624+614)/(579+211+197+190+624+200+185+200+614)
+```
+<font size="2">Accuracy or Hit rate = 60.56%</font>
+
+# Question-13) Now let us see how we can use the model2 parameters to predict market shares under hypothetical market scenarios for an arbitrary set of products. First, build a custom function to predict market share for an arbitrary set of alternatives available in a data set d. You can find the commands for building the custom function in the “Multinomial Choice Modelling Practical”. Call the custom function predict.share.
+
+```{r}
+
+predict.share <- function(model, d) {
+  temp <- model.matrix(update(model$formula, 0 ~ .), data = d)[, -1] # \
+  u <- temp %*% model$coef[colnames(temp)]
+  probs <- t(exp(u) / sum(exp(u))) 
+  colnames(probs) <- paste("alternative", colnames(probs))
+  return(probs)
+}
+
+```
+
+#Question-14) Create a data object (i.e., data.frame or tibble) with the following hypothetical market consisting of five alternatives:Call this data object as d_base
+
+```{r}
+d_base <- cloud[
+  c(893, 31, 61, 430, 112), 
+  c("cloud_storage", "customer_support", "cloud_services", "price_n") 
+  ]
+
+d_base
+```
+
+<font size="2"> Data frame randomly created according to hypothetical market share</font>
+
+# Question-15) Run the customer function predict.share using model2 and d_base as input arguments. What is the predicted market share for alternative four of this hypothetical market?
+
+```{r}
+d_base <- cbind(d_base, as.vector(predict.share(m2, d_base)))
+
+d_base
+```
+<font size="2"> Predicted market share from model-m2 and 14.4% market share for 4th alternative</font>
+
+# Question-16) Now consider a modification on the previous hypothetical market, in which the level of the cloud_services attribute changes for the fifth alternative to “email, video”. What is the predicted market share for alternative four of this new hypothetical market?
+
+```{r}
+d_new <- d_base
+
+d_new[5, "cloud_services"] <- "email, video"
+
+d_new$predicted_share <- as.vector(predict.share(m2, d_new))
+
+d_new
+
+```
+<font size="2"> The predicted market share after modification for the alternative four is 18.6%</font>
+
+# Question-17) Which alternative was affected the most from this modification of the hypothetical market, and by how much (in percentage terms)?
+
+<font size ="2">Highest affected from above results, we observed that it is fifth alternative which is around 18% depreciation after modification</font>
+
+
+# Question-18) Use the m2 coefficients to calculate how much a consumer would be willing to pay (in £ per month) for customer support.
+```{r}
+
+- coef(m2)["customer_supportyes"] / coef(m2)["price_n"]
+```
+<font size="2">Willingness pay for customer support 'yes' is 3.68 pounds per month</font>
+
+
+# Question-19) Use the model2 coefficients to calculate how much a consumer would be willing to pay (in £ per month) for an upgrade from 30GB to 2000GB cloud storage.
+
+```{r}
+- coef(m2)["cloud_storage2000gb"] / coef(m2)["price_n"]
+```
+<font size="2">Willingness to pay for upgrade from 30GB to 2000GB 1.233 pounds per month</font>
+
+## Question-20) Use the model2 coefficients to calculate how much a consumer would be willing to pay (in £ per month) for an upgrade from 2000GB to 5000GB cloud storage.
+
+```{r}
+- (coef(m2)["cloud_storage5000gb"] - coef(m2)["cloud_storage2000gb"]) / coef(m2)["price_n"]
+```
+<font size="2">Willingness to pay for upgrade from 2000GB to 5000GB 5.44 pounds per month</font>
+
+
+
+ 
